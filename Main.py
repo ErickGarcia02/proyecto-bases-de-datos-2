@@ -201,7 +201,10 @@ with st.spinner("Procesando archivo..."):
             datos = datos.replace(["NULL", "null", "None", ""], np.nan)
 
             for col in datos.columns:
-                datos[col] = pd.to_numeric(datos[col], errors='ignore')
+                try:
+                    datos[col] = pd.to_numeric(datos[col])
+                except (ValueError, TypeError):
+                    pass
 
 # FLUJO LÓGICO: VISTAS -> DIAGNÓSTICO -> TRANSFORMACIÓN
 
