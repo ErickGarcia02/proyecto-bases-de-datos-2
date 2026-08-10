@@ -1,15 +1,13 @@
 import os
 import pandas as pd
+import numpy as np
 import streamlit as st
 from read_file import read_sql_file
 from Normalizacion import evaluar_forma_normal
 from forma_1FN import transformar_a_1fn
 
 def prenormalizar_tabla(df):
-    """
-    Toma un DataFrame y busca columnas con valores separados por comas.
-    Divide esos valores y crea registros (filas) nuevos.
-    """
+
     df_prenorm = df.copy()
     for col in df_prenorm.columns:
         if df_prenorm[col].dtype == 'object':
@@ -187,25 +185,27 @@ with st.spinner("Procesando archivo..."):
         if not tablas_en_sql:
             st.error("No se encontraron tablas (CREATE TABLE) en el archivo .sql.")
         else:
-            st.markdown("### Seleccione una tabla")
+            st.markdown("Seleccione una tabla")
             nombre_tabla = st.selectbox(
                 "¿Qué tabla del script quieres ver?",
                 list(tablas_en_sql.keys()),
                 label_visibility="collapsed",
             )
-            
-            # Limpiar estado si se cambia de tabla
+ 
             if 'tabla_actual' not in st.session_state or st.session_state['tabla_actual'] != nombre_tabla:
                 st.session_state.clear()
                 st.session_state['tabla_actual'] = nombre_tabla
                 
             datos = tablas_en_sql[nombre_tabla]
 
+            datos = datos.replace(["NULL", "null", "None", ""], np.nan)
+
+            for col in datos.columns:
+                datos[col] = pd.to_numeric(datos[col], errors='ignore')
+
 # FLUJO LÓGICO: VISTAS -> DIAGNÓSTICO -> TRANSFORMACIÓN
 
 if datos is not None:
-    
-    # 1. VISTA PREVIA Y ANÁLISIS DE COLUMNAS (PK, FK, TIPOS)
 
     st.markdown("### Vista previa de los datos")
     tab_datos, tab_columnas = st.tabs(["Datos", "Columnas y Metadatos"])
@@ -218,10 +218,8 @@ if datos is not None:
         
         for i, col in enumerate(datos.columns):
             tipo_pd = str(datos[col].dtype)
-            if "int" in tipo_pd:
-                tipos_sql.append("INT")
-            elif "float" in tipo_pd:
-                tipos_sql.append("FLOAT")
+            if "int" in tipo_pd or "float" in tipo_pd:
+                tipos_sql.append("INT" if "int" in tipo_pd else "FLOAT")
             else:
                 tipos_sql.append("VARCHAR(255)")
 
@@ -268,9 +266,8 @@ if datos is not None:
     st.markdown("---")
     
     # 3. HERRAMIENTAS DE TRANSFORMACIÓN
-    st.markdown("### Herramientas de Transformación")
+    st.markdown(" Herramientas de Transformación")
     
-    # A. Botón de Prenormalización (Aplanar)
     if st.button("0. Aplicar Prenormalización (Crear registros nuevos)"):
         with st.spinner("Descomponiendo valores separados por comas..."):
             datos_prenorm = prenormalizar_tabla(datos)
@@ -284,14 +281,11 @@ if datos is not None:
 
     st.markdown("---")
 
-    # B. Botón de Primera Forma Normal (1FN)
     if st.button("1. Transformar a 1FN (Separar en tablas)", type="primary"):
         with st.spinner("Generando nuevas relaciones y propagando claves..."):
             
-            datos_a_transformar = st.session_state.get('datos_procesados', datos)
-            columna_pk = datos_a_transformar.columns[0] 
-            
-            tablas_resultantes = transformar_a_1fn(datos_a_transformar, pk_col=columna_pk)
+            columna_pk = datos.columns[0] 
+            tablas_resultantes = transformar_a_1fn(datos, pk_col=columna_pk)
             
             st.session_state['tablas_1fn'] = tablas_resultantes
             st.session_state['mostrar_1fn'] = True
@@ -299,5 +293,5 @@ if datos is not None:
     if st.session_state.get('mostrar_1fn', False):
         st.success("Transformacion a 1FN completada. Se han generado las tablas independientes.")
         for nombre_t, df_resultado in st.session_state['tablas_1fn'].items():
-            st.markdown(f" {nombre_t}")
+            st.markdown(f"#### {nombre_t}")
             st.dataframe(df_resultado, use_container_width=True, hide_index=True)
