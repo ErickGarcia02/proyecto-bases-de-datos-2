@@ -2,12 +2,13 @@ import os
 import pandas as pd
 import numpy as np
 import streamlit as st
+
 from read_file import read_sql_file
 from Normalizacion import evaluar_forma_normal
 from forma_1FN import transformar_a_1fn
+from forma_2fn import transformar_a_2fn  # Importación limpia y directa
 
 def prenormalizar_tabla(df):
-
     df_prenorm = df.copy()
     for col in df_prenorm.columns:
         if df_prenorm[col].dtype == 'object':
@@ -269,7 +270,7 @@ if datos is not None:
     st.markdown("---")
     
     # 3. HERRAMIENTAS DE TRANSFORMACIÓN
-    st.markdown(" Herramientas de Transformación")
+    st.markdown("### Herramientas de Transformación")
     
     if st.button("0. Aplicar Prenormalización (Crear registros nuevos)"):
         with st.spinner("Descomponiendo valores separados por comas..."):
@@ -279,14 +280,14 @@ if datos is not None:
             st.session_state['mostrar_prenorm'] = True
 
     if st.session_state.get('mostrar_prenorm', False):
-        st.success("Prenormalizacion completada. Los valores con comas se han dividido en nuevas filas.")
+        st.success("Prenormalización completada. Los valores con comas se han dividido en nuevas filas.")
         st.dataframe(st.session_state['datos_procesados'], use_container_width=True)
 
     st.markdown("---")
 
+    # --- PASO 1FN ---
     if st.button("1. Transformar a 1FN (Separar en tablas)", type="primary"):
         with st.spinner("Generando nuevas relaciones y propagando claves..."):
-            
             columna_pk = datos.columns[0] 
             tablas_resultantes = transformar_a_1fn(datos, pk_col=columna_pk)
             
@@ -294,7 +295,36 @@ if datos is not None:
             st.session_state['mostrar_1fn'] = True
 
     if st.session_state.get('mostrar_1fn', False):
-        st.success("Transformacion a 1FN completada. Se han generado las tablas independientes.")
+        st.success("Transformación a 1FN completada. Se han generado las tablas independientes.")
         for nombre_t, df_resultado in st.session_state['tablas_1fn'].items():
             st.markdown(f"#### {nombre_t}")
+            st.dataframe(df_resultado, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # --- PASO 2FN ---
+        if st.button("2. Transformar a 2FN (Eliminar dependencias parciales)", type="primary"):
+            with st.spinner("Identificando claves y separando dependencias parciales..."):
+                tablas_2fn_res = transformar_a_2fn(st.session_state['tablas_1fn'])
+                
+                st.session_state['tablas_2fn'] = tablas_2fn_res
+                st.session_state['mostrar_2fn'] = True
+
+    if st.session_state.get('mostrar_2fn', False):
+        st.success("Transformación a 2FN completada. Se eliminaron las dependencias parciales.")
+        
+        for nombre_t, info in st.session_state['tablas_2fn'].items():
+            df_resultado = info["tabla"]
+            pk_col = info["PK"]
+            fk_cols = info["FK"]
+            
+            st.markdown(f"#### {nombre_t}")
+            
+            col_pk, col_fk = st.columns(2)
+            with col_pk:
+                st.markdown(f"🔑 **Clave Primaria (PK):** `{pk_col}`")
+            with col_fk:
+                fks_texto = ", ".join([f"`{f}`" for f in fk_cols]) if fk_cols else "Ninguna"
+                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks_texto}")
+                
             st.dataframe(df_resultado, use_container_width=True, hide_index=True)
