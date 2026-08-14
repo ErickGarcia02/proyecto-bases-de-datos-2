@@ -1,6 +1,9 @@
+import re
+
 import pandas as pd
 
 #tablas_1fn es un diccionario de tablas {nombre_tabla: DataFrame}
+#Se retornara otro diccionario {nombre_tabla: {tabla: DataFrame, PK: nombre_columna, FK: nombres_columnas[]}}
 def transformar_a_2fn(tablas_1fn):
     """
     Convierte una o mas tablas 1fn en 2fn
@@ -30,10 +33,10 @@ def transformar_a_2fn(tablas_1fn):
     pks_usadas = {}  # nombre_columna_pk -> nombre_tabla que ya la usa como PK
     pks_generadas = set()  # tablas a las que se les tuvo que inventar una PK
 
-    # 1) Detectar PK/FK de cada tabla ("codigo"/"id" en el nombre de columna)
+    # 1) Detectar PK/FK de cada tabla ("codigo"/"id"/"numero" en el nombre de columna)
     for nombre_tabla, df in tablas_1fn.items():
         df = df.copy()
-        columnas_clave = [c for c in df.columns if "codigo" in c.lower() or "id" in c.lower()]
+        columnas_clave = [c for c in df.columns if "codigo" in c.lower() or "id" in c.lower() or "numero" in c.lower()]
 
         pk = columnas_clave[0] if columnas_clave else df.columns[0]
         fk = columnas_clave[1:]
@@ -103,5 +106,32 @@ def transformar_a_2fn(tablas_1fn):
             continue
 
         info["tabla"] = df
+
+    # 3) Renombrar las tablas nuevas (las que tienen "Tabla" en el nombre) segun
+    # su segunda columna: se divide en palabras por las mayusculas y a cada
+    # palabra se le agrega "es" si termina en consonante o "s" si termina en vocal
+    VOCALES = "aeiouáéíóúü"
+    for nombre_tabla in list(tablas_2fn.keys()):
+        if "Tabla" not in nombre_tabla:
+            continue
+
+        segunda_columna = tablas_2fn[nombre_tabla]["tabla"].columns[1]
+        palabras = re.findall(r"[A-ZÁÉÍÓÚÑ][^A-ZÁÉÍÓÚÑ]*", segunda_columna)
+
+        palabras_plural = []
+        for palabra in palabras:
+            if palabra[-1].lower() in VOCALES:
+                palabras_plural.append(palabra + "s")
+            else:
+                palabras_plural.append(palabra + "es")
+
+        nombre_nuevo = "".join(palabras_plural)
+
+        # Si ese nombre ya esta en uso (dos tablas distintas comparten el nombre
+        # de su segunda columna, se le agrega la PK de esta tabla para diferenciarlas
+        if nombre_nuevo in tablas_2fn:
+            nombre_nuevo = f"{nombre_nuevo}_{tablas_2fn[nombre_tabla]['PK']}"
+
+        tablas_2fn[nombre_nuevo] = tablas_2fn.pop(nombre_tabla)
 
     return tablas_2fn
