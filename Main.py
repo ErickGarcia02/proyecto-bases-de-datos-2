@@ -5,9 +5,10 @@ import streamlit as st
 from read_file import read_sql_file
 from Normalizacion import evaluar_forma_normal
 from forma_1FN import transformar_a_1fn
+from forma_2fn import transformar_a_2fn
+from forma_3FN import transformar_3fn 
 
 def prenormalizar_tabla(df):
-
     df_prenorm = df.copy()
     for col in df_prenorm.columns:
         if df_prenorm[col].dtype == 'object':
@@ -269,8 +270,9 @@ if datos is not None:
     st.markdown("---")
     
     # 3. HERRAMIENTAS DE TRANSFORMACIÓN
-    st.markdown(" Herramientas de Transformación")
+    st.markdown("### Herramientas de Transformación")
     
+    # --- PASO PRE-NORMALIZACIÓN ---
     if st.button("0. Aplicar Prenormalización (Crear registros nuevos)"):
         with st.spinner("Descomponiendo valores separados por comas..."):
             datos_prenorm = prenormalizar_tabla(datos)
@@ -284,6 +286,7 @@ if datos is not None:
 
     st.markdown("---")
 
+    # --- PASO 1FN ---
     if st.button("1. Transformar a 1FN (Separar en tablas)", type="primary"):
         with st.spinner("Generando nuevas relaciones y propagando claves..."):
             
@@ -298,3 +301,47 @@ if datos is not None:
         for nombre_t, df_resultado in st.session_state['tablas_1fn'].items():
             st.markdown(f"#### {nombre_t}")
             st.dataframe(df_resultado, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # --- PASO 2FN ---
+        if st.button("2. Transformar a 2FN (Validar dependencias parciales)", type="primary"):
+            with st.spinner("Declarando claves primarias y evaluando dependencias parciales..."):
+                tablas_2fn_res = transformar_a_2fn(st.session_state['tablas_1fn'])
+                st.session_state['tablas_2fn'] = tablas_2fn_res
+                st.session_state['mostrar_2fn'] = True
+
+    if st.session_state.get('mostrar_2fn', False):
+        st.success("Transformación a 2FN completada. (Tablas con PK simple o sin atributos extra cumplen la norma).")
+        
+        for nombre_t, info in st.session_state['tablas_2fn'].items():
+            st.markdown(f"#### {nombre_t}")
+            col_pk, col_fk = st.columns(2)
+            with col_pk:
+                st.markdown(f"🔑 **Clave Primaria (PK):** `{info['PK']}`")
+            with col_fk:
+                fks = ", ".join([f"`{f}`" for f in info['FK']]) if info['FK'] else "Ninguna"
+                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks}")
+            st.dataframe(info['tabla'], use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # --- PASO 3FN ---
+        if st.button("3. Transformar a 3FN (Extraer Catálogos)", type="primary"):
+            with st.spinner("Evaluando dependencias transitivas (A -> B)..."):
+                tablas_3fn_res = transformar_3fn(st.session_state['tablas_2fn'])
+                st.session_state['tablas_3fn'] = tablas_3fn_res
+                st.session_state['mostrar_3fn'] = True
+
+    if st.session_state.get('mostrar_3fn', False):
+        st.success("Transformación a 3FN completada. Se extrajeron los catálogos correspondientes.")
+        
+        for nombre_t, info in st.session_state['tablas_3fn'].items():
+            st.markdown(f"#### {nombre_t}")
+            col_pk, col_fk = st.columns(2)
+            with col_pk:
+                st.markdown(f"🔑 **Clave Primaria (PK):** `{info['PK']}`")
+            with col_fk:
+                fks = ", ".join([f"`{f}`" for f in info['FK']]) if info['FK'] else "Ninguna"
+                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks}")
+            st.dataframe(info['tabla'], use_container_width=True, hide_index=True)
