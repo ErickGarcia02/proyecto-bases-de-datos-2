@@ -9,13 +9,17 @@ def transformar_a_1fn(df, pk_col):
     columnas_multivalor = []
 
     for col in df.columns:
-        if df[col].dtype == 'object' and df[col].astype(str).str.contains(',').any():
+        if col == pk_col:
+            continue
+       
+        serie_texto = df[col].astype(str)
+        if serie_texto.str.contains(',', regex=False).any():
             columnas_multivalor.append(col)
 
     if not columnas_multivalor and df.duplicated(subset=[pk_col]).any():
         for col in df.columns:
             if col != pk_col:
-                if df.groupby(pk_col)[col].nunique().max() > 1:
+                if df.groupby(pk_col)[col].nunique(dropna=True).max() > 1:
                     columnas_multivalor.append(col)
 
     columnas_base = [col for col in df.columns if col not in columnas_multivalor]
@@ -25,10 +29,9 @@ def transformar_a_1fn(df, pk_col):
     for col in columnas_multivalor:
         df_rel = df[[pk_col, col]].copy()
 
-        if df_rel[col].dtype == 'object':
-            df_rel[col] = df_rel[col].astype(str).str.split(',')
-            df_rel = df_rel.explode(col)
-            df_rel[col] = df_rel[col].str.strip()
+        df_rel[col] = df_rel[col].astype(str).str.split(',', regex=False)
+        df_rel = df_rel.explode(col)
+        df_rel[col] = df_rel[col].str.strip()
 
         df_rel = df_rel.dropna(subset=[col])
         df_rel = df_rel[~df_rel[col].astype(str).isin(["nan", "None", ""])]
