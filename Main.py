@@ -8,12 +8,13 @@ from Normalizacion import evaluar_forma_normal
 from forma_1FN import transformar_a_1fn
 from forma_2fn import transformar_a_2fn
 from forma_3FN import transformar_3fn
+from esquema import generar_esquema_plano
 from output import generar_script_sql
 
 def prenormalizar_tabla(df):
     df_prenorm = df.copy()
     for col in df_prenorm.columns:
-        if df_prenorm[col].dtype == 'object':
+        if pd.api.types.is_string_dtype(df_prenorm[col]) or df_prenorm[col].dtype == 'object':
             if df_prenorm[col].astype(str).str.contains(',').any():
                 df_prenorm[col] = df_prenorm[col].astype(str).str.split(',')
                 df_prenorm = df_prenorm.explode(col)
@@ -217,7 +218,7 @@ if datos is not None:
     tab_datos, tab_columnas = st.tabs(["Datos", "Columnas y Metadatos"])
 
     with tab_datos:
-        st.dataframe(datos, use_container_width=True)
+        st.dataframe(datos, width="stretch")
 
     with tab_columnas:
         tipos_sql, es_pk, es_fk = [], [], []
@@ -249,7 +250,7 @@ if datos is not None:
                 "FK (Clave Foránea)": es_fk,
             }
         )
-        st.dataframe(info_cols, use_container_width=True, hide_index=True)
+        st.dataframe(info_cols, width="stretch", hide_index=True)
 
     st.markdown("---")
 
@@ -283,7 +284,7 @@ if datos is not None:
 
     if st.session_state.get('mostrar_prenorm', False):
         st.success("Prenormalización completada. Los valores con comas se han dividido en nuevas filas.")
-        st.dataframe(st.session_state['datos_procesados'], use_container_width=True)
+        st.dataframe(st.session_state['datos_procesados'], width="stretch")
 
     st.markdown("---")
 
@@ -300,7 +301,7 @@ if datos is not None:
         st.success("Transformación a 1FN completada. Se han generado las tablas independientes.")
         for nombre_t, df_resultado in st.session_state['tablas_1fn'].items():
             st.markdown(f"#### {nombre_t}")
-            st.dataframe(df_resultado, use_container_width=True, hide_index=True)
+            st.dataframe(df_resultado, width="stretch", hide_index=True)
 
         st.markdown("---")
 
@@ -324,12 +325,12 @@ if datos is not None:
 
             col_pk, col_fk = st.columns(2)
             with col_pk:
-                st.markdown(f"🔑 **Clave Primaria (PK):** `{pk_col}`")
+                st.markdown(f"**Clave Primaria (PK):** `{pk_col}`")
             with col_fk:
                 fks_texto = ", ".join([f"`{f}`" for f in fk_cols]) if fk_cols else "Ninguna"
-                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks_texto}")
+                st.markdown(f"**Claves Foráneas (FK):** {fks_texto}")
 
-            st.dataframe(df_resultado, use_container_width=True, hide_index=True)
+            st.dataframe(df_resultado, width="stretch", hide_index=True)
 
         st.markdown("---")
 
@@ -363,31 +364,52 @@ if datos is not None:
 
             col_pk, col_fk = st.columns(2)
             with col_pk:
-                st.markdown(f"🔑 **Clave Primaria (PK):** `{pk_col}`")
+                st.markdown(f"**Clave Primaria (PK):** `{pk_col}`")
             with col_fk:
                 fks_texto = ", ".join([f"`{f}`" for f in fk_cols]) if fk_cols else "Ninguna"
-                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks_texto}")
+                st.markdown(f"**Claves Foráneas (FK):** {fks_texto}")
 
-            st.dataframe(df_resultado, use_container_width=True, hide_index=True)
+            st.dataframe(df_resultado, width="stretch", hide_index=True)
 
         st.markdown("---")
 
-        # --- PASO 4: GENERAR SCRIPT SQL FINAL ---
-        if st.button("4. Generar Script SQL Final (3FN)", type="primary"):
-            with st.spinner("Generando script SQL..."):
+        # --- PASO 4: GENERAR SCRIPT SQL FINAL Y ESQUEMA PLANO ---
+        if st.button("4. Generar Script SQL Final y Esquema Plano", type="primary"):
+            with st.spinner("Generando archivos..."):
+                
+                # 1. Generar Script SQL
                 script_generado = generar_script_sql(
                     st.session_state['tablas_3fn'],
                     nombre_bd=nombre_tabla
                 )
                 st.session_state['script_sql'] = script_generado
+                
+                # 2. Generar Archivo Plano (Esquema)
+                esquema_generado = generar_esquema_plano(st.session_state['tablas_3fn'])
+                st.session_state['esquema_plano'] = esquema_generado
+                
                 st.session_state['mostrar_script'] = True
 
     if st.session_state.get('mostrar_script', False):
-        st.success("Script SQL generado correctamente.")
-        st.code(st.session_state['script_sql'], language="sql")
-        st.download_button(
-            label="⬇️ Descargar Script SQL",
-            data=st.session_state['script_sql'],
-            file_name=f"{nombre_tabla}_normalizado_3fn.sql",
-            mime="text/sql",
-        )
+        st.success("Archivos generados correctamente.")
+        
+        # Pestañas para organizar la vista
+        tab_sql, tab_esquema = st.tabs(["Script SQL", "Esquema (Archivo Plano)"])
+        
+        with tab_sql:
+            st.code(st.session_state['script_sql'], language="sql")
+            st.download_button(
+                label="Descargar Script SQL",
+                data=st.session_state['script_sql'],
+                file_name=f"{nombre_tabla}_normalizado.sql",
+                mime="text/sql",
+            )
+            
+        with tab_esquema:
+            st.code(st.session_state['esquema_plano'], language="text")
+            st.download_button(
+                label="Descargar Esquema (Archivo Plano)",
+                data=st.session_state['esquema_plano'],
+                file_name=f"{nombre_tabla}_esquema.txt",
+                mime="text/plain",
+            )
