@@ -2,11 +2,13 @@ import os
 import pandas as pd
 import numpy as np
 import streamlit as st
+
 from read_file import read_sql_file
 from Normalizacion import evaluar_forma_normal
 from forma_1FN import transformar_a_1fn
 from forma_2fn import transformar_a_2fn
-from forma_3FN import transformar_3fn 
+from forma_3FN import transformar_3fn
+from output import generar_script_sql
 
 def prenormalizar_tabla(df):
     df_prenorm = df.copy()
@@ -192,11 +194,11 @@ with st.spinner("Procesando archivo..."):
                 list(tablas_en_sql.keys()),
                 label_visibility="collapsed",
             )
- 
+
             if 'tabla_actual' not in st.session_state or st.session_state['tabla_actual'] != nombre_tabla:
                 st.session_state.clear()
                 st.session_state['tabla_actual'] = nombre_tabla
-                
+
             datos = tablas_en_sql[nombre_tabla]
 
             datos = datos.replace(["NULL", "null", "None", ""], np.nan)
@@ -219,7 +221,7 @@ if datos is not None:
 
     with tab_columnas:
         tipos_sql, es_pk, es_fk = [], [], []
-        
+
         for i, col in enumerate(datos.columns):
             tipo_pd = str(datos[col].dtype)
             if "int" in tipo_pd or "float" in tipo_pd:
@@ -250,38 +252,37 @@ if datos is not None:
         st.dataframe(info_cols, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    
+
     # 2. DIAGNÓSTICO DE NORMALIZACIÓN
     st.markdown("### Diagnóstico de Normalización")
-    
+
     estado, tipo_alerta, detalles = evaluar_forma_normal(datos)
-    
+
     if tipo_alerta == "error":
         st.error(f"Estado detectado: {estado}")
     elif tipo_alerta == "warning":
         st.warning(f"Estado detectado: {estado}")
     else:
         st.success(f"Estado detectado: {estado}")
-        
+
     with st.expander("Ver detalles del análisis"):
         for detalle in detalles:
             st.write(detalle)
 
     st.markdown("---")
-    
+
     # 3. HERRAMIENTAS DE TRANSFORMACIÓN
     st.markdown("### Herramientas de Transformación")
-    
-    # --- PASO PRE-NORMALIZACIÓN ---
+
     if st.button("0. Aplicar Prenormalización (Crear registros nuevos)"):
         with st.spinner("Descomponiendo valores separados por comas..."):
             datos_prenorm = prenormalizar_tabla(datos)
-            
+
             st.session_state['datos_procesados'] = datos_prenorm
             st.session_state['mostrar_prenorm'] = True
 
     if st.session_state.get('mostrar_prenorm', False):
-        st.success("Prenormalizacion completada. Los valores con comas se han dividido en nuevas filas.")
+        st.success("Prenormalización completada. Los valores con comas se han dividido en nuevas filas.")
         st.dataframe(st.session_state['datos_procesados'], use_container_width=True)
 
     st.markdown("---")
@@ -289,15 +290,14 @@ if datos is not None:
     # --- PASO 1FN ---
     if st.button("1. Transformar a 1FN (Separar en tablas)", type="primary"):
         with st.spinner("Generando nuevas relaciones y propagando claves..."):
-            
-            columna_pk = datos.columns[0] 
+            columna_pk = datos.columns[0]
             tablas_resultantes = transformar_a_1fn(datos, pk_col=columna_pk)
-            
+
             st.session_state['tablas_1fn'] = tablas_resultantes
             st.session_state['mostrar_1fn'] = True
 
     if st.session_state.get('mostrar_1fn', False):
-        st.success("Transformacion a 1FN completada. Se han generado las tablas independientes.")
+        st.success("Transformación a 1FN completada. Se han generado las tablas independientes.")
         for nombre_t, df_resultado in st.session_state['tablas_1fn'].items():
             st.markdown(f"#### {nombre_t}")
             st.dataframe(df_resultado, use_container_width=True, hide_index=True)
@@ -305,43 +305,89 @@ if datos is not None:
         st.markdown("---")
 
         # --- PASO 2FN ---
-        if st.button("2. Transformar a 2FN (Validar dependencias parciales)", type="primary"):
-            with st.spinner("Declarando claves primarias y evaluando dependencias parciales..."):
+        if st.button("2. Transformar a 2FN (Eliminar dependencias parciales)", type="primary"):
+            with st.spinner("Identificando claves y separando dependencias parciales..."):
                 tablas_2fn_res = transformar_a_2fn(st.session_state['tablas_1fn'])
+
                 st.session_state['tablas_2fn'] = tablas_2fn_res
                 st.session_state['mostrar_2fn'] = True
 
     if st.session_state.get('mostrar_2fn', False):
-        st.success("Transformación a 2FN completada. (Tablas con PK simple o sin atributos extra cumplen la norma).")
-        
+        st.success("Transformación a 2FN completada. Se eliminaron las dependencias parciales.")
+
         for nombre_t, info in st.session_state['tablas_2fn'].items():
+            df_resultado = info["tabla"]
+            pk_col = info["PK"]
+            fk_cols = info["FK"]
+
             st.markdown(f"#### {nombre_t}")
+
             col_pk, col_fk = st.columns(2)
             with col_pk:
-                st.markdown(f"🔑 **Clave Primaria (PK):** `{info['PK']}`")
+                st.markdown(f"🔑 **Clave Primaria (PK):** `{pk_col}`")
             with col_fk:
-                fks = ", ".join([f"`{f}`" for f in info['FK']]) if info['FK'] else "Ninguna"
-                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks}")
-            st.dataframe(info['tabla'], use_container_width=True, hide_index=True)
+                fks_texto = ", ".join([f"`{f}`" for f in fk_cols]) if fk_cols else "Ninguna"
+                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks_texto}")
+
+            st.dataframe(df_resultado, use_container_width=True, hide_index=True)
 
         st.markdown("---")
 
         # --- PASO 3FN ---
-        if st.button("3. Transformar a 3FN (Extraer Catálogos)", type="primary"):
-            with st.spinner("Evaluando dependencias transitivas (A -> B)..."):
-                tablas_3fn_res = transformar_3fn(st.session_state['tablas_2fn'])
+        if st.button("3. Transformar a 3FN (Eliminar dependencias transitivas)", type="primary"):
+            with st.spinner("Detectando dependencias transitivas y extrayendo catálogos..."):
+                tablas_3fn_res, conflictos = transformar_3fn(st.session_state['tablas_2fn'])
+
                 st.session_state['tablas_3fn'] = tablas_3fn_res
+                st.session_state['conflictos_3fn'] = conflictos
                 st.session_state['mostrar_3fn'] = True
 
     if st.session_state.get('mostrar_3fn', False):
-        st.success("Transformación a 3FN completada. Se extrajeron los catálogos correspondientes.")
-        
+        if st.session_state['conflictos_3fn']:
+            st.warning(
+                f"Se detectaron {len(st.session_state['conflictos_3fn'])} conflicto(s) de datos. "
+                "Las columnas involucradas NO se movieron a un catálogo compartido para evitar corromper la información."
+            )
+            with st.expander("Ver detalles de los conflictos"):
+                for conflicto in st.session_state['conflictos_3fn']:
+                    st.write(f"- {conflicto}")
+
+        st.success("Transformación a 3FN completada. Se eliminaron las dependencias transitivas.")
+
         for nombre_t, info in st.session_state['tablas_3fn'].items():
+            df_resultado = info["tabla"]
+            pk_col = info["PK"]
+            fk_cols = info["FK"]
+
             st.markdown(f"#### {nombre_t}")
+
             col_pk, col_fk = st.columns(2)
             with col_pk:
-                st.markdown(f"🔑 **Clave Primaria (PK):** `{info['PK']}`")
+                st.markdown(f"🔑 **Clave Primaria (PK):** `{pk_col}`")
             with col_fk:
-                fks = ", ".join([f"`{f}`" for f in info['FK']]) if info['FK'] else "Ninguna"
-                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks}")
-            st.dataframe(info['tabla'], use_container_width=True, hide_index=True)
+                fks_texto = ", ".join([f"`{f}`" for f in fk_cols]) if fk_cols else "Ninguna"
+                st.markdown(f"🔗 **Claves Foráneas (FK):** {fks_texto}")
+
+            st.dataframe(df_resultado, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+        # --- PASO 4: GENERAR SCRIPT SQL FINAL ---
+        if st.button("4. Generar Script SQL Final (3FN)", type="primary"):
+            with st.spinner("Generando script SQL..."):
+                script_generado = generar_script_sql(
+                    st.session_state['tablas_3fn'],
+                    nombre_bd=nombre_tabla
+                )
+                st.session_state['script_sql'] = script_generado
+                st.session_state['mostrar_script'] = True
+
+    if st.session_state.get('mostrar_script', False):
+        st.success("Script SQL generado correctamente.")
+        st.code(st.session_state['script_sql'], language="sql")
+        st.download_button(
+            label="⬇️ Descargar Script SQL",
+            data=st.session_state['script_sql'],
+            file_name=f"{nombre_tabla}_normalizado_3fn.sql",
+            mime="text/sql",
+        )
