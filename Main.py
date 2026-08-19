@@ -8,7 +8,7 @@ from Normalizacion import evaluar_forma_normal
 from forma_1FN import transformar_a_1fn
 from forma_2fn import transformar_a_2fn
 from forma_3FN import transformar_3fn
-from esquema import generar_esquema_plano
+from esquema import generar_esquema_plano, generar_codigo_mermaid
 from output import generar_script_sql
 
 def prenormalizar_tabla(df):
@@ -30,12 +30,9 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Fondo general con degradado sutil */
     .stApp {
         background: radial-gradient(circle at 20% 0%, #1D1330 0%, #120B1F 45%, #0B0715 100%);
     }
-
-    /* Tipografías */
     h1 {
         color: #C4B5FD;
         font-size: 2.4rem;
@@ -48,7 +45,6 @@ st.markdown(
     p, label, span {
         color: #E9E3FB;
     }
-
     .hero {
         background: linear-gradient(135deg, #4C2E8C 0%, #7C3AED 50%, #A78BFA 100%);
         padding: 1.8rem 2rem;
@@ -65,7 +61,6 @@ st.markdown(
         font-size: 1.05rem;
         margin: 0;
     }
-
     div[data-testid="stMetric"] {
         background-color: #1D1330;
         border: 1px solid #4C2E8C;
@@ -75,15 +70,12 @@ st.markdown(
     }
     div[data-testid="stMetricLabel"] { color: #C4B5FD !important; }
     div[data-testid="stMetricValue"] { color: #FFFFFF !important; }
-
-    /* Tablas */
     [data-testid="stDataFrame"] {
         border: 1px solid #7C3AED;
         border-radius: 14px;
         overflow: hidden;
         box-shadow: 0 6px 18px rgba(124, 58, 237, 0.18);
     }
-
     section[data-testid="stFileUploaderDropzone"] {
         border-color: #4C2E8C !important;
         background-color: #1D1330 !important;
@@ -92,7 +84,6 @@ st.markdown(
     section[data-testid="stFileUploaderDropzone"]:hover {
         border-color: #A78BFA !important;
     }
-
     button[kind="primary"], .stDownloadButton button {
         background: linear-gradient(135deg, #7C3AED, #A78BFA) !important;
         border: none !important;
@@ -104,23 +95,19 @@ st.markdown(
         transform: translateY(-1px);
         box-shadow: 0 6px 16px rgba(167, 139, 250, 0.4) !important;
     }
-
     details {
         border: 1px solid #4C2E8C !important;
         border-radius: 12px !important;
         background-color: #1D1330 !important;
     }
-
     div[data-testid="stAlert"] {
         border-left: 4px solid #A78BFA;
         border-radius: 10px;
     }
-
     section[data-testid="stSidebar"] {
         background-color: #150C24;
         border-right: 1px solid #2E1C4E;
     }
-
     button[data-baseweb="tab"] {
         color: #C4B5FD !important;
     }
@@ -128,7 +115,6 @@ st.markdown(
         color: #FFFFFF !important;
         border-bottom-color: #A78BFA !important;
     }
-
     hr {
         border-color: #2E1C4E;
     }
@@ -201,7 +187,6 @@ with st.spinner("Procesando archivo..."):
                 st.session_state['tabla_actual'] = nombre_tabla
 
             datos = tablas_en_sql[nombre_tabla]
-
             datos = datos.replace(["NULL", "null", "None", ""], np.nan)
 
             for col in datos.columns:
@@ -210,10 +195,7 @@ with st.spinner("Procesando archivo..."):
                 except (ValueError, TypeError):
                     pass
 
-# FLUJO LÓGICO: VISTAS -> DIAGNÓSTICO -> TRANSFORMACIÓN
-
 if datos is not None:
-
     st.markdown("### Vista previa de los datos")
     tab_datos, tab_columnas = st.tabs(["Datos", "Columnas y Metadatos"])
 
@@ -253,8 +235,6 @@ if datos is not None:
         st.dataframe(info_cols, width="stretch", hide_index=True)
 
     st.markdown("---")
-
-    # 2. DIAGNÓSTICO DE NORMALIZACIÓN
     st.markdown("### Diagnóstico de Normalización")
 
     estado, tipo_alerta, detalles = evaluar_forma_normal(datos)
@@ -271,11 +251,8 @@ if datos is not None:
             st.write(detalle)
 
     st.markdown("---")
-
-    # 3. HERRAMIENTAS DE TRANSFORMACIÓN
     st.markdown("### Herramientas de Transformación")
 
-    # --- PASO 0 ---
     if st.button("0. Aplicar Prenormalización (Crear registros nuevos)"):
         with st.spinner("Descomponiendo valores separados por comas..."):
             datos_prenorm = prenormalizar_tabla(datos)
@@ -288,11 +265,9 @@ if datos is not None:
 
     st.markdown("---")
 
-    # --- PASO 1FN ---
     if st.button("1. Transformar a 1FN (Separar en tablas)", type="primary"):
         with st.spinner("Generando nuevas relaciones y propagando claves..."):
             columna_pk = datos.columns[0]
-            # Usa los datos prenormalizados si existen, si no, usa los originales
             datos_entrada_1fn = st.session_state.get('datos_procesados', datos)
             tablas_resultantes = transformar_a_1fn(datos_entrada_1fn, pk_col=columna_pk)
 
@@ -307,27 +282,23 @@ if datos is not None:
 
     st.markdown("---")
 
-    # --- PASO 2FN ---
     if st.button("2. Transformar a 2FN (Eliminar dependencias parciales)", type="primary"):
         if 'tablas_1fn' not in st.session_state:
             st.warning("⚠️ Por favor, ejecuta el Paso 1 (Transformar a 1FN) primero.")
         else:
             with st.spinner("Identificando claves y separando dependencias parciales..."):
                 tablas_2fn_res = transformar_a_2fn(st.session_state['tablas_1fn'])
-
                 st.session_state['tablas_2fn'] = tablas_2fn_res
                 st.session_state['mostrar_2fn'] = True
 
     if st.session_state.get('mostrar_2fn', False):
         st.success("Transformación a 2FN completada. Se eliminaron las dependencias parciales.")
-
         for nombre_t, info in st.session_state['tablas_2fn'].items():
             df_resultado = info["tabla"]
             pk_col = info["PK"]
             fk_cols = info["FK"]
 
             st.markdown(f"#### {nombre_t}")
-
             col_pk, col_fk = st.columns(2)
             with col_pk:
                 st.markdown(f"**Clave Primaria (PK):** `{pk_col}`")
@@ -339,14 +310,12 @@ if datos is not None:
 
     st.markdown("---")
 
-    # --- PASO 3FN ---
     if st.button("3. Transformar a 3FN (Eliminar dependencias transitivas)", type="primary"):
         if 'tablas_2fn' not in st.session_state:
             st.warning("⚠️ Por favor, ejecuta el Paso 2 (Transformar a 2FN) primero.")
         else:
             with st.spinner("Detectando dependencias transitivas y extrayendo catálogos..."):
                 tablas_3fn_res, conflictos = transformar_3fn(st.session_state['tablas_2fn'])
-
                 st.session_state['tablas_3fn'] = tablas_3fn_res
                 st.session_state['conflictos_3fn'] = conflictos
                 st.session_state['mostrar_3fn'] = True
@@ -362,14 +331,12 @@ if datos is not None:
                     st.write(f"- {conflicto}")
 
         st.success("Transformación a 3FN completada. Se eliminaron las dependencias transitivas.")
-
         for nombre_t, info in st.session_state['tablas_3fn'].items():
             df_resultado = info["tabla"]
             pk_col = info["PK"]
             fk_cols = info["FK"]
 
             st.markdown(f"#### {nombre_t}")
-
             col_pk, col_fk = st.columns(2)
             with col_pk:
                 st.markdown(f"**Clave Primaria (PK):** `{pk_col}`")
@@ -381,31 +348,29 @@ if datos is not None:
 
     st.markdown("---")
 
-    # --- PASO 4: GENERAR SCRIPT SQL FINAL Y ESQUEMA PLANO ---
     if st.button("4. Generar Script SQL Final y Esquema Plano", type="primary"):
         if 'tablas_3fn' not in st.session_state:
             st.warning("⚠️ Por favor, ejecuta el Paso 3 (Transformar a 3FN) primero antes de generar el script.")
         else:
-            with st.spinner("Generando archivos..."):
-                
-                # 1. Generar Script SQL
+            with st.spinner("Generando archivos y dibujando diagrama..."):
                 script_generado = generar_script_sql(
                     st.session_state['tablas_3fn'],
                     nombre_bd=nombre_tabla
                 )
                 st.session_state['script_sql'] = script_generado
                 
-                # 2. Generar Archivo Plano (Esquema)
                 esquema_generado = generar_esquema_plano(st.session_state['tablas_3fn'])
                 st.session_state['esquema_plano'] = esquema_generado
+                
+                codigo_mermaid = generar_codigo_mermaid(st.session_state['tablas_3fn'])
+                st.session_state['codigo_mermaid'] = codigo_mermaid
                 
                 st.session_state['mostrar_script'] = True
 
     if st.session_state.get('mostrar_script', False):
-        st.success("Archivos generados correctamente.")
+        st.success("Archivos y diagrama generados correctamente.")
         
-        # Pestañas para organizar la vista
-        tab_sql, tab_esquema = st.tabs(["Script SQL", "Esquema (Archivo Plano)"])
+        tab_sql, tab_esquema, tab_diagrama = st.tabs(["Script SQL", "Esquema (Archivo Plano)", "Diagrama Visual ER"])
         
         with tab_sql:
             st.code(st.session_state['script_sql'], language="sql")
@@ -424,3 +389,7 @@ if datos is not None:
                 file_name=f"{nombre_tabla}_esquema.txt",
                 mime="text/plain",
             )
+            
+        with tab_diagrama:
+            st.info("💡 Este diagrama Entidad-Relación se genera automáticamente a partir de tu base de datos en 3FN.")
+            st.markdown(f"```mermaid\n{st.session_state['codigo_mermaid']}\n```")

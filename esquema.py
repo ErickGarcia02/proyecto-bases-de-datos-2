@@ -1,23 +1,14 @@
 def generar_esquema_plano(tablas_normalizadas):
-    """
-    Genera un archivo de texto con el esquema descriptivo Entidad-Relación
-    y el código compatible con Mermaid.js para dibujar un diagrama gráfico.
-    """
+    """Genera el documento de texto descriptivo (sin el gráfico)"""
     lineas = [
         "==================================================",
-        " ESQUEMA ENTIDAD-RELACIÓN (DESCRIPTIVO) ",
+        " ESQUEMA ENTIDAD-RELACIÓN (DOCUMENTACIÓN) ",
         "==================================================",
         ""
     ]
     
-    # Mapear tablas que sirven de origen para las Foráneas
-    mapa_pk = {}
-    for nombre, info in tablas_normalizadas.items():
-        pk = info["PK"]
-        if " + " not in pk:
-            mapa_pk[pk] = nombre
+    mapa_pk = {info["PK"]: nombre for nombre, info in tablas_normalizadas.items() if " + " not in info["PK"]}
 
-    # 1. PARTE DESCRIPTIVA (Lectura Humana)
     for nombre_tabla, info in tablas_normalizadas.items():
         df = info["tabla"]
         pk = info["PK"]
@@ -27,10 +18,7 @@ def generar_esquema_plano(tablas_normalizadas):
         lineas.append(f"  [PK] Identificador único : {pk}")
         
         if fks:
-            fk_text = []
-            for fk in fks:
-                tabla_destino = mapa_pk.get(fk, "Tabla_Base")
-                fk_text.append(f"1:N -> Pertenece a la entidad '{tabla_destino}' ({fk})")
+            fk_text = [f"1:N -> '{mapa_pk.get(fk, 'Tabla_Base')}' ({fk})" for fk in fks]
             lineas.append(f"  [FK] Relaciones          : {', '.join(fk_text)}")
         else:
             lineas.append("  [FK] Relaciones          : Ninguna (Entidad Fuerte / Catálogo)")
@@ -43,24 +31,19 @@ def generar_esquema_plano(tablas_normalizadas):
             
         lineas.append("-" * 50)
         
-    # 2. PARTE GRÁFICA (Código para renderizar el diagrama ER)
-    lineas.extend([
-        "",
-        "==================================================",
-        " CÓDIGO DE DIAGRAMA ER GRÁFICO (MERMAID) ",
-        "==================================================",
-        " Instrucciones: Copia todo el bloque de abajo y pégalo ",
-        " en https://mermaid.live para visualizar el diagrama gráfico.",
-        "",
-        "erDiagram"
-    ])
+    return "\n".join(lineas)
+
+def generar_codigo_mermaid(tablas_normalizadas):
+    """Genera el código estricto para dibujar el gráfico ER"""
+    lineas = ["erDiagram"]
+    mapa_pk = {info["PK"]: nombre for nombre, info in tablas_normalizadas.items() if " + " not in info["PK"]}
     
     for nombre_tabla, info in tablas_normalizadas.items():
         df = info["tabla"]
         pk_cols = [c.strip() for c in info["PK"].split(" + ")]
         fks = info["FK"]
         
-        # Bloque de atributos de la entidad
+        # Atributos de la tabla
         lineas.append(f"    {nombre_tabla} {{")
         for p in pk_cols:
             lineas.append(f"        string {p} PK")
@@ -70,17 +53,15 @@ def generar_esquema_plano(tablas_normalizadas):
                 
         cols_extras = [c for c in df.columns if c not in pk_cols and c not in fks]
         for col in cols_extras:
-            # Limpiar nombres de columnas para evitar errores de sintaxis en Mermaid
             col_limpia = col.replace(" ", "_").replace("-", "_")
             lineas.append(f"        string {col_limpia}")
         lineas.append("    }")
         
-        # Bloque de relaciones (Líneas que conectan las tablas)
+        # Relaciones (Líneas)
         if fks:
             for fk in fks:
                 tabla_destino = mapa_pk.get(fk, "Tabla_Base")
                 if tabla_destino != nombre_tabla:
-                    # Dibuja la relación de 1 a muchos (1:N)
-                    lineas.append(f"    {tabla_destino} ||--o{{ {nombre_tabla} : \"tiene ({fk})\"")
+                    lineas.append(f"    {tabla_destino} ||--o{{ {nombre_tabla} : \"({fk})\"")
 
     return "\n".join(lineas)
