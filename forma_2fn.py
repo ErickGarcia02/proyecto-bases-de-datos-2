@@ -16,26 +16,24 @@ def transformar_a_2fn(tablas_1fn):
     df_base = tablas_1fn[nombre_base].copy()
     pk_base = df_base.columns[0]
 
-    # Guardar la tabla base (Su PK se mantiene intacta)
+    # Guardar la tabla base 
     tablas_2fn[nombre_base.replace("_1FN", "_2FN")] = {
         "tabla": df_base,
         "PK": pk_base,
         "FK": []
     }
 
-    # 2. Procesar las nuevas tablas de dependencias (Ej: Teléfonos, Proyectos)
+    # 2. Procesar las nuevas tablas de dependencias
     for nombre_tabla, df in tablas_1fn.items():
         if nombre_tabla == nombre_base:
             continue
         
         df_rel = df.copy()
         
-        # Extraer el nombre central para bautizar la nueva columna (Ej: Tabla_ProyectosAsignados_1FN -> ID_ProyectosAsignados)
         atributo = nombre_tabla.replace("Tabla_", "").replace("_1FN", "")
         nombre_pk_nueva = f"ID_{atributo}"
         
-        # Insertar la nueva columna de ID auto-incremental al principio de la tabla (posición 0)
-        # Se genera un rango de números desde el 1 hasta el número total de filas
+        # Insertar la nueva columna de ID 
         df_rel.insert(0, nombre_pk_nueva, range(1, len(df_rel) + 1))
         
         # La PK de la tabla base pasa a ser la FK oficial de esta nueva tabla
@@ -43,8 +41,8 @@ def transformar_a_2fn(tablas_1fn):
         
         tablas_2fn[nombre_tabla.replace("_1FN", "_2FN")] = {
             "tabla": df_rel,
-            "PK": nombre_pk_nueva,  # La PK ahora es la nueva columna generada
-            "FK": [fk_heredada]     # Se asigna la FK apuntando a la tabla base
+            "PK": nombre_pk_nueva,  
+            "FK": [fk_heredada]  
         }
 
     return tablas_2fn

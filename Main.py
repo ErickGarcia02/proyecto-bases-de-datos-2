@@ -275,10 +275,10 @@ if datos is not None:
     # 3. HERRAMIENTAS DE TRANSFORMACIÓN
     st.markdown("### Herramientas de Transformación")
 
+    # --- PASO 0 ---
     if st.button("0. Aplicar Prenormalización (Crear registros nuevos)"):
         with st.spinner("Descomponiendo valores separados por comas..."):
             datos_prenorm = prenormalizar_tabla(datos)
-
             st.session_state['datos_procesados'] = datos_prenorm
             st.session_state['mostrar_prenorm'] = True
 
@@ -292,7 +292,9 @@ if datos is not None:
     if st.button("1. Transformar a 1FN (Separar en tablas)", type="primary"):
         with st.spinner("Generando nuevas relaciones y propagando claves..."):
             columna_pk = datos.columns[0]
-            tablas_resultantes = transformar_a_1fn(datos, pk_col=columna_pk)
+            # Usa los datos prenormalizados si existen, si no, usa los originales
+            datos_entrada_1fn = st.session_state.get('datos_procesados', datos)
+            tablas_resultantes = transformar_a_1fn(datos_entrada_1fn, pk_col=columna_pk)
 
             st.session_state['tablas_1fn'] = tablas_resultantes
             st.session_state['mostrar_1fn'] = True
@@ -303,10 +305,13 @@ if datos is not None:
             st.markdown(f"#### {nombre_t}")
             st.dataframe(df_resultado, width="stretch", hide_index=True)
 
-        st.markdown("---")
+    st.markdown("---")
 
-        # --- PASO 2FN ---
-        if st.button("2. Transformar a 2FN (Eliminar dependencias parciales)", type="primary"):
+    # --- PASO 2FN ---
+    if st.button("2. Transformar a 2FN (Eliminar dependencias parciales)", type="primary"):
+        if 'tablas_1fn' not in st.session_state:
+            st.warning("⚠️ Por favor, ejecuta el Paso 1 (Transformar a 1FN) primero.")
+        else:
             with st.spinner("Identificando claves y separando dependencias parciales..."):
                 tablas_2fn_res = transformar_a_2fn(st.session_state['tablas_1fn'])
 
@@ -332,10 +337,13 @@ if datos is not None:
 
             st.dataframe(df_resultado, width="stretch", hide_index=True)
 
-        st.markdown("---")
+    st.markdown("---")
 
-        # --- PASO 3FN ---
-        if st.button("3. Transformar a 3FN (Eliminar dependencias transitivas)", type="primary"):
+    # --- PASO 3FN ---
+    if st.button("3. Transformar a 3FN (Eliminar dependencias transitivas)", type="primary"):
+        if 'tablas_2fn' not in st.session_state:
+            st.warning("⚠️ Por favor, ejecuta el Paso 2 (Transformar a 2FN) primero.")
+        else:
             with st.spinner("Detectando dependencias transitivas y extrayendo catálogos..."):
                 tablas_3fn_res, conflictos = transformar_3fn(st.session_state['tablas_2fn'])
 
@@ -371,10 +379,13 @@ if datos is not None:
 
             st.dataframe(df_resultado, width="stretch", hide_index=True)
 
-        st.markdown("---")
+    st.markdown("---")
 
-        # --- PASO 4: GENERAR SCRIPT SQL FINAL Y ESQUEMA PLANO ---
-        if st.button("4. Generar Script SQL Final y Esquema Plano", type="primary"):
+    # --- PASO 4: GENERAR SCRIPT SQL FINAL Y ESQUEMA PLANO ---
+    if st.button("4. Generar Script SQL Final y Esquema Plano", type="primary"):
+        if 'tablas_3fn' not in st.session_state:
+            st.warning("⚠️ Por favor, ejecuta el Paso 3 (Transformar a 3FN) primero antes de generar el script.")
+        else:
             with st.spinner("Generando archivos..."):
                 
                 # 1. Generar Script SQL
