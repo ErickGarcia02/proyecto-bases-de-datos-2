@@ -8,11 +8,12 @@ def evaluar_forma_normal(df):
 
     # 1. PRUEBA 0FN (Sin normalizar): Atributos multivalor (comas)
     falla_1fn_comas = False
+    
+    # Hemos quitado la restricción de dtype. Ahora escanea todo estrictamente.
     for columna in df.columns:
-        if df[columna].dtype == 'object':
-            if df[columna].astype(str).str.contains(r'[,;]').any():
-                falla_1fn_comas = True
-                detalles.append(f"Atributo multivalor detectado en '{columna}'.")
+        if df[columna].astype(str).str.contains(r'[,;]', regex=True).any():
+            falla_1fn_comas = True
+            detalles.append(f"Atributo multivalor detectado en '{columna}'.")
     
     if falla_1fn_comas:
         detalles.append("Remedio: Aplicar Prenormalización o 1FN para separar listas.")
@@ -28,7 +29,6 @@ def evaluar_forma_normal(df):
     detalles.append("Cumple 1FN: Datos atómicos y sin grupos repetidos.")
     
     # 3. PRUEBA 2FN -> 3FN: Dependencias Transitivas Reales
-    # (Al ser una PK simple, si cumple 1FN, automáticamente cumple 2FN. Solo buscamos fallos de 3FN)
     dependencia_transitiva = False
     columnas_no_pk = [c for c in df.columns if c != pk_col]
 
