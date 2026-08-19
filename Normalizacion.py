@@ -7,36 +7,50 @@ def evaluar_forma_normal(df):
 
     detalles = []
 
-    # PRUEBA 1FN: Atributos atómicos (sin comas)
-
+    # 1. PRUEBA 1FN: 
     falla_1fn_comas = False
     for columna in df.columns:
         if df[columna].dtype == 'object':
             if df[columna].astype(str).str.contains(r'[,;]').any():
                 falla_1fn_comas = True
-                detalles.append(f"Atributo multivalor (separado por comas) detectado en '{columna}'.")
+                detalles.append(f"Atributo multivalor detectado en '{columna}'.")
     
     if falla_1fn_comas:
         return "No Normalizada", "error", detalles
 
+    # 2. PRUEBA 1FN: Llave duplicada (Relaciones anidadas)
     pk_col = df.columns[0] 
     if df.duplicated(subset=[pk_col]).any():
-        detalles.append(f"La Clave Principal '{pk_col}' está duplicada porque hay relaciones anidadas en la misma tabla.")
-        detalles.append(" Remedio: Aplica la Transformación a 1FN para separar los atributos en nuevas tablas.")
+        detalles.append(f"La Clave Principal '{pk_col}' está duplicada.")
+        detalles.append("Remedio: Aplica la Transformación a 1FN para separar atributos.")
         return "Prenormalizada (Falta separar a 1FN)", "warning", detalles
 
     detalles.append("Los datos son atómicos y no hay relaciones anidadas (Cumple 1FN).")
     
-    filas_totales = len(df)
-    redundancias = 0
-    if filas_totales > 1:
-        for columna in df.columns:
-            if df[columna].nunique() < filas_totales and df[columna].nunique() > 1:
-                redundancias += 1
-                
-    if redundancias > 2:
-        detalles.append("Se detectaron redundancias que sugieren dependencias parciales (2FN) o transitivas (3FN).")
-        return "1FN (Primera Forma Normal)", "warning", detalles
+    # 3. PRUEBA 2FN/3FN: Dependencias Funcionales Reales
+    dependencia_detectada = False
+    columnas_candidatas = [c for c in df.columns if c != pk_col]
 
-    detalles.append("No se detectaron redundancias evidentes.")
+    for col_a in columnas_candidatas:
+        # Ignorar columnas que son únicas para cada fila (no pueden ser determinantes comunes)
+        if df[col_a].nunique() >= len(df):
+            continue
+            
+        for col_b in columnas_candidatas:
+            if col_a != col_b:
+                sub = df[[col_a, col_b]].dropna()
+                if not sub.empty:
+                    # La prueba matemática de dependencia funcional
+                    if sub.groupby(col_a)[col_b].nunique().max() == 1:
+                        dependencia_detectada = True
+                        detalles.append(f"Redundancia detectada: '{col_b}' depende lógicamente de '{col_a}'.")
+                        break 
+        
+        if dependencia_detectada:
+            break
+
+    if dependencia_detectada:
+        return "1FN o 2FN (Requiere normalizar a 3FN)", "warning", detalles
+
+    detalles.append("No se detectaron dependencias parciales ni transitivas.")
     return "Posible 3FN (Tercera Forma Normal)", "success", detalles
